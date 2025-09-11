@@ -191,14 +191,14 @@ func (b *Build) BuildPod(images BuildPodImages, buildContext BuildContext) (*cor
 	dnsProbeHost := ref.Context().RegistryStr()
 
 	buildEnv := b.Spec.Source.Source().BuildEnvVars()
-	var platformProjectMetadataGitEnv []corev1.EnvVar
+	var gitMetadataEnv []corev1.EnvVar
 	if b.Spec.Source.Git != nil {
-		platformProjectMetadataGitEnv = []corev1.EnvVar{
-			{Name: PlatformEnvVarPrefix + "PROJECT_METADATA_GIT_URL", Value: b.Spec.Source.Git.URL},
-			{Name: PlatformEnvVarPrefix + "PROJECT_METADATA_GIT_REVISION", Value: b.Spec.Source.Git.Revision},
+		gitMetadataEnv = []corev1.EnvVar{
+			{Name: PlatformEnvVarPrefix + "BPE_GIT_REVISION", Value: b.Spec.Source.Git.Revision},
+			{Name: PlatformEnvVarPrefix + "BP_OCI_REVISION", Value: b.Spec.Source.Git.Revision},
 		}
 	}
-	buildEnv = append(buildEnv, platformProjectMetadataGitEnv...)
+	buildEnv = append(buildEnv, gitMetadataEnv...)
 	for _, envVar := range b.Spec.Env {
 		envVar.Name = PlatformEnvVarPrefix + envVar.Name
 		buildEnv = append(buildEnv, envVar)
