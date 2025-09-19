@@ -18,6 +18,8 @@ func TestImageBuilds(t *testing.T) {
 }
 
 func testImageBuilds(t *testing.T, when spec.G, it spec.S) {
+	const gitRevision = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b"
+
 	image := &Image{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "image-name",
@@ -99,7 +101,7 @@ func testImageBuilds(t *testing.T, when spec.G, it spec.S) {
 		sourceResolver.Status.Source = corev1alpha1.ResolvedSourceConfig{
 			Git: &corev1alpha1.ResolvedGitSource{
 				URL:      "https://some.git/url",
-				Revision: "revision",
+				Revision: gitRevision,
 				Type:     corev1alpha1.Commit,
 			},
 		}
@@ -107,7 +109,7 @@ func testImageBuilds(t *testing.T, when spec.G, it spec.S) {
 		latestBuild.Spec.Source = corev1alpha1.SourceConfig{
 			Git: &corev1alpha1.Git{
 				URL:      "https://some.git/url",
-				Revision: "revision",
+				Revision: gitRevision,
 			},
 		}
 
@@ -147,9 +149,25 @@ func testImageBuilds(t *testing.T, when spec.G, it spec.S) {
 		it("sets git url and git revision when image source is git", func() {
 			build := image.Build(sourceResolver, builder, latestBuild, "", "", 27, "")
 			assert.Contains(t, build.Spec.Source.Git.URL, "https://some.git/url")
-			assert.Contains(t, build.Spec.Source.Git.Revision, "revision")
+			assert.Equal(t, gitRevision, build.Spec.Source.Git.Revision)
 			assert.Nil(t, build.Spec.Source.Blob)
 			assert.Nil(t, build.Spec.Source.Registry)
+		})
+
+		it("appends the git sha tag when a git source is present", func() {
+			image.Spec.Tag = "gcr.io/imagename/foo:test"
+			build := image.Build(sourceResolver, builder, latestBuild, "", "", 12, "")
+			assert.Contains(t, build.Spec.Tags, "gcr.io/imagename/foo:"+gitRevision)
+		})
+
+		it("appends the git sha tag even when the resolved git source is not marked as a commit", func() {
+			image.Spec.Tag = "gcr.io/imagename/foo:test"
+			previousType := sourceResolver.Status.Source.Git.Type
+			sourceResolver.Status.Source.Git.Type = corev1alpha1.Branch
+			defer func() { sourceResolver.Status.Source.Git.Type = previousType }()
+
+			build := image.Build(sourceResolver, builder, latestBuild, "", "", 12, "")
+			assert.Contains(t, build.Spec.Tags, "gcr.io/imagename/foo:"+gitRevision)
 		})
 
 		it("sets blob url when image source is blob", func() {
@@ -180,7 +198,7 @@ func testImageBuilds(t *testing.T, when spec.G, it spec.S) {
 			image.Spec.Tag = "imagename/foo:test"
 			image.Spec.ImageTaggingStrategy = corev1alpha1.None
 			build := image.Build(sourceResolver, builder, latestBuild, "", "", 1, "")
-			require.Len(t, build.Spec.Tags, 1)
+			require.Len(t, build.Spec.Tags, 2)
 		})
 
 		it("with adds additional tags names", func() {
@@ -188,7 +206,7 @@ func testImageBuilds(t *testing.T, when spec.G, it spec.S) {
 			image.Spec.AdditionalTags = []string{"imagename/foo:test2", "anotherimage/foo:test3"}
 			image.Spec.ImageTaggingStrategy = corev1alpha1.None
 			build := image.Build(sourceResolver, builder, latestBuild, "", "", 1, "")
-			require.Len(t, build.Spec.Tags, 3)
+			require.Len(t, build.Spec.Tags, 4)
 		})
 
 		it("generates a build with default process when set", func() {
@@ -202,14 +220,14 @@ func testImageBuilds(t *testing.T, when spec.G, it spec.S) {
 			it("with tag prefix if image name has a tag", func() {
 				image.Spec.Tag = "gcr.io/imagename/foo:test"
 				build := image.Build(sourceResolver, builder, latestBuild, "", "", 45, "")
-				require.Len(t, build.Spec.Tags, 2)
+				require.Len(t, build.Spec.Tags, 3)
 				require.Regexp(t, "gcr.io/imagename/foo:test-b45\\.\\d{8}\\.\\d{6}", build.Spec.Tags[1])
 			})
 
 			it("without tag prefix if image name has no provided tag", func() {
 				image.Spec.Tag = "gcr.io/imagename/notags"
 				build := image.Build(sourceResolver, builder, latestBuild, "", "", 1, "")
-				require.Len(t, build.Spec.Tags, 2)
+				require.Len(t, build.Spec.Tags, 3)
 				require.Regexp(t, "gcr.io/imagename/notags:b1\\.\\d{8}\\.\\d{6}", build.Spec.Tags[1])
 			})
 
@@ -217,14 +235,14 @@ func testImageBuilds(t *testing.T, when spec.G, it spec.S) {
 				image.Spec.Tag = "gcr.io/imagename/tagged:latest"
 				image.Spec.AdditionalTags = []string{"imagename/foo:test2", "anotherimage/foo:test3"}
 				build := image.Build(sourceResolver, builder, latestBuild, "", "", 1, "")
-				require.Len(t, build.Spec.Tags, 4)
+				require.Len(t, build.Spec.Tags, 5)
 				require.Regexp(t, "gcr.io/imagename/tagged:b1\\.\\d{8}\\.\\d{6}", build.Spec.Tags[1])
 			})
 
 			it("without tag prefix if image name has the tag 'latest' provided", func() {
 				image.Spec.Tag = "gcr.io/imagename/tagged:latest"
 				build := image.Build(sourceResolver, builder, latestBuild, "", "", 1, "")
-				require.Len(t, build.Spec.Tags, 2)
+				require.Len(t, build.Spec.Tags, 3)
 				require.Regexp(t, "gcr.io/imagename/tagged:b1\\.\\d{8}\\.\\d{6}", build.Spec.Tags[1])
 			})
 		})
