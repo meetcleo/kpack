@@ -2,6 +2,7 @@ package v1alpha2
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -37,6 +38,14 @@ type BuildReason string
 
 func (im *Image) Build(sourceResolver *SourceResolver, builder BuilderResource, latestBuild *Build, reasons, changes string, nextBuildNumber int64, priorityClass string) *Build {
 	buildNumber := strconv.Itoa(int(nextBuildNumber))
+	tags := im.generateTags(buildNumber)
+
+	if resolvedGit := im.resolvedGitSource(sourceResolver); resolvedGit != nil {
+		if shaTag, err := im.gitRevisionTag(resolvedGit.Revision); err == nil && shaTag != "" {
+			tags = appendIfMissing(tags, shaTag)
+		}
+	}
+
 	return &Build{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: im.Namespace,
@@ -57,7 +66,7 @@ func (im *Image) Build(sourceResolver *SourceResolver, builder BuilderResource, 
 			}),
 		},
 		Spec: BuildSpec{
-			Tags:    im.generateTags(buildNumber),
+			Tags:    tags,
 			Builder: builder.BuildBuilderSpec(),
 			RunImage: BuildSpecImage{
 				Image: builder.RunImage(),
@@ -275,6 +284,43 @@ func (im *Image) generateTags(buildNumber string) []string {
 		tag.RegistryStr() + "/" + tag.RepositoryStr() + ":" + tagName + "b" + buildNumber + "." + now.Format("20060102") + "." + fmt.Sprintf("%02d%02d%02d", now.Hour(), now.Minute(), now.Second())},
 		im.Spec.AdditionalTags...,
 	)
+}
+
+func (im *Image) resolvedGitSource(sourceResolver *SourceResolver) *corev1alpha1.ResolvedGitSource {
+	if sourceResolver == nil {
+		return nil
+	}
+
+	gitSource := sourceResolver.Status.Source.Git
+	if gitSource == nil {
+		return nil
+	}
+
+	if gitSource.Type != corev1alpha1.Commit {
+		return nil
+	}
+
+	return gitSource
+}
+
+func (im *Image) gitRevisionTag(revision string) (string, error) {
+	if revision == "" {
+		return "", nil
+	}
+
+	tag, err := name.NewTag(im.Spec.Tag, name.WeakValidation)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%s:%s", tag.Context().Name(), revision), nil
+}
+
+func appendIfMissing(tags []string, candidate string) []string {
+	if slices.Contains(tags, candidate) {
+		return tags
+	}
+	return append(tags, candidate)
 }
 
 func (im *Image) generateBuildName(buildNumber string) string {
