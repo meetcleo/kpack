@@ -160,6 +160,16 @@ func testImageBuilds(t *testing.T, when spec.G, it spec.S) {
 			assert.Contains(t, build.Spec.Tags, "gcr.io/imagename/foo:"+gitRevision)
 		})
 
+		it("appends the git sha tag even when the resolved git source is not marked as a commit", func() {
+			image.Spec.Tag = "gcr.io/imagename/foo:test"
+			previousType := sourceResolver.Status.Source.Git.Type
+			sourceResolver.Status.Source.Git.Type = corev1alpha1.Branch
+			defer func() { sourceResolver.Status.Source.Git.Type = previousType }()
+
+			build := image.Build(sourceResolver, builder, latestBuild, "", "", 12, "")
+			assert.Contains(t, build.Spec.Tags, "gcr.io/imagename/foo:"+gitRevision)
+		})
+
 		it("sets blob url when image source is blob", func() {
 			sourceResolver.Status.Source = corev1alpha1.ResolvedSourceConfig{
 				Blob: &corev1alpha1.ResolvedBlobSource{

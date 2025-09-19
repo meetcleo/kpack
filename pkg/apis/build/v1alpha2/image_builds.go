@@ -296,10 +296,6 @@ func (im *Image) resolvedGitSource(sourceResolver *SourceResolver) *corev1alpha1
 		return nil
 	}
 
-	if gitSource.Type != corev1alpha1.Commit {
-		return nil
-	}
-
 	return gitSource
 }
 
